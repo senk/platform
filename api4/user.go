@@ -18,6 +18,8 @@ func InitUser() {
 	BaseRoutes.Users.Handle("", ApiHandler(createUser)).Methods("POST")
 	BaseRoutes.User.Handle("", ApiSessionRequired(getUser)).Methods("GET")
 	BaseRoutes.User.Handle("", ApiSessionRequired(updateUser)).Methods("PUT")
+	BaseRoutes.Users.Handle("/password/reset", ApiHandler(resetPassword)).Methods("POST")
+	BaseRoutes.Users.Handle("/password/reset/send", ApiHandler(sendPasswordReset)).Methods("POST")
 
 	BaseRoutes.Users.Handle("/login", ApiHandler(login)).Methods("POST")
 	BaseRoutes.Users.Handle("/logout", ApiHandler(logout)).Methods("POST")
@@ -163,6 +165,49 @@ func Logout(c *Context, w http.ResponseWriter, r *http.Request) {
 			c.Err = err
 			return
 		}
+	}
+
+	ReturnStatusOK(w)
+}
+
+func resetPassword(c *Context, w http.ResponseWriter, r *http.Request) {
+	props := model.MapFromJson(r.Body)
+
+	code := props["code"]
+	if len(code) != model.PASSWORD_RECOVERY_CODE_SIZE {
+		c.SetInvalidParam("code")
+		return
+	}
+
+	newPassword := props["new_password"]
+
+	c.LogAudit("attempt - code=" + code)
+
+	if err := app.ResetPasswordFromCode(code, newPassword, c.GetSiteURL()); err != nil {
+		c.LogAudit("fail - code=" + code)
+		c.Err = err
+		return
+	}
+
+	c.LogAudit("success - code=" + code)
+
+	ReturnStatusOK(w)
+}
+
+func sendPasswordReset(c *Context, w http.ResponseWriter, r *http.Request) {
+	props := model.MapFromJson(r.Body)
+
+	email := props["email"]
+	if len(email) == 0 {
+		c.SetInvalidParam("email")
+		return
+	}
+
+	if sent, err := app.SendPasswordReset(email, c.GetSiteURL()); err != nil {
+		c.Err = err
+		return
+	} else if sent {
+		c.LogAudit("sent=" + email)
 	}
 
 	ReturnStatusOK(w)
